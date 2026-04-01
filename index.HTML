@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Olho Amigo Pro - Scanner com IA</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            margin: 0; background: #000; color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex; flex-direction: column; height: 100vh;
+        }
+        #video { width: 100%; height: 60%; object-fit: cover; border-bottom: 4px solid #ffcc00; }
+        .controls {
+            flex: 1; display: flex; flex-direction: column;
+            justify-content: space-around; align-items: center; padding: 20px;
+        }
+        .btn-principal {
+            width: 100%; height: 100px; background: #ffcc00; color: #000;
+            border: none; border-radius: 20px; font-size: 1.8rem; font-weight: bold;
+        }
+        #status { font-size: 1.2rem; text-align: center; color: #00ff00; }
+    </style>
+</head>
+<body>
+
+    <video id="video" autoplay playsinline></video>
+    
+    <div class="controls">
+        <div id="status" aria-live="assertive">Iniciando sistema...</div>
+        <button class="btn-principal" onclick="processarLeitura()">
+            LER AGORA
+        </button>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const statusTxt = document.getElementById('status');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // 1. FUNÇÃO DE VOZ
+        function falar(texto) {
+            window.speechSynthesis.cancel(); // Para falas antigas antes de começar a nova
+            const msg = new SpeechSynthesisUtterance(texto);
+            msg.lang = 'pt-BR';
+            window.speechSynthesis.speak(msg);
+            statusTxt.innerText = texto;
+        }
+
+        // 2. SISTEMA DE BIP (Guia Sonoro)
+        function tocarBip(frequencia) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 880; // Tom agudo
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // Simula o sensor de proximidade/alinhamento
+        let intervaloBip;
+        function iniciarGuiaSonoro() {
+            let velocidade = 1000; // Começa devagar (1 bip por segundo)
+            intervaloBip = setInterval(() => {
+                tocarBip();
+                // Aqui no futuro, se a IA detectar que está centralizado, 
+                // diminuímos o tempo (ex: 200ms) para o bip ficar rápido.
+            }, velocidade);
+        }
+
+        // 3. INICIAR CÂMERA
+        async function iniciar() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", focusMode: "continuous" } 
+                });
+                video.srcObject = stream;
+                falar("Sistema pronto. Aponte para o papel. O bip guiará você.");
+                iniciarGuiaSonoro();
+            } catch (e) {
+                falar("Erro ao acessar câmera.");
+            }
+        }
+
+        // 4. PROCESSAR LEITURA REAL (IA)
+        async function processarLeitura() {
+            clearInterval(intervaloBip); // Para o bip para não atrapalhar a voz
+            falar("Processando texto. Mantenha o celular parado por alguns segundos.");
+
+            const canvas = document.getElementById('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+
+            // Tesseract analisa a imagem do Canvas
+            Tesseract.recognize(canvas, 'por', { 
+                logger: m => console.log(m) 
+            }).then(({ data: { text } }) => {
+                if (text.trim().length > 3) {
+                    falar("Texto encontrado: " + text);
+                } else {
+                    falar("Não consegui ler nada claro. Tente aproximar ou afastar um pouco.");
+                    iniciarGuiaSonoro();
+                }
+            });
+        }
+
+        window.onload = iniciar;
+    </script>
+</body>
+</html>
